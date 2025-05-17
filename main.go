@@ -142,6 +142,7 @@ func (s *EmailService) sendEmail(data EmailData) error {
 	message.WriteString(data.Body)
 
 	to := []string{data.To}
+	fmt.Println("An email was sent to", data.To)
 	return smtp.SendMail(addr, auth, s.senderEmail, to, message.Bytes())
 }
 
