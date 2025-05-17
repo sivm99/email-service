@@ -4,6 +4,8 @@ services:
     build: .
     container_name: email-service
     env_file: .env
+    ports:
+      - "7979:7979"  # Maps port 7979 on host to port 7979 in container
     networks:
       - npm-network
     restart: unless-stopped
