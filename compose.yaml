@@ -7,6 +7,8 @@ services:
     networks:
       - npm-network
     restart: unless-stopped
+    volumes:
+      - ./templates:/app/templates  # Maps local templates folder to container
 
 networks:
   npm-network:
