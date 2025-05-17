@@ -1,0 +1,13 @@
+services:
+
+  email-service:
+    build: .
+    container_name: email-service
+    env_file: .env
+    networks:
+      - npm-network
+    restart: unless-stopped
+
+networks:
+  npm-network:
+    external: true
