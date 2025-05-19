@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/smtp"
 	"os"
@@ -24,14 +23,10 @@ type EmailTemplate struct {
 }
 
 type EmailData struct {
-	To       string
-	Subject  string
-	Body     string
-	UserId   string
-	Name     string
-	OTP      string
-	Metadata map[string]string
-	Data     map[string]interface{}
+	To      string
+	Subject string
+	Body    string
+	Data    map[string]interface{}
 }
 
 type EmailService struct {
@@ -162,11 +157,6 @@ func (s *EmailService) QueueEmail(data EmailData) error {
 }
 
 func (s *EmailService) handleSendEmail(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	query := r.URL.Query()
 
 	// Get required parameters
@@ -214,44 +204,6 @@ func (s *EmailService) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// For backward compatibility: handle individual parameters
-	// that might still be passed separately
-	userId := query.Get("userId")
-	if userId != "" {
-		data["UserId"] = userId
-	}
-
-	name := query.Get("name")
-	if name != "" {
-		data["Name"] = name
-	}
-
-	var otp string
-	if query.Get("generateOTP") == "true" {
-		otp = generateOTP()
-		data["OTP"] = otp
-	} else {
-		otp = query.Get("otp")
-		if otp != "" {
-			data["OTP"] = otp
-		}
-	}
-
-	// Build metadata from any other query parameters
-	// and add them to the data map
-	metadata := make(map[string]string)
-	for key, values := range query {
-		if key != "to" && key != "slug" && key != "subject" && key != "data" &&
-			key != "userId" && key != "name" && key != "otp" && key != "generateOTP" {
-			metadata[key] = values[0]
-			// Also add direct access to these query params
-			data[key] = values[0]
-		}
-	}
-
-	// Keep metadata for backward compatibility
-	data["Metadata"] = metadata
-
 	// Execute template to get the email body
 	var bodyBuf bytes.Buffer
 	if err := tmpl.Execute(&bodyBuf, data); err != nil {
@@ -261,14 +213,10 @@ func (s *EmailService) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 
 	// Queue the email for sending
 	emailData := EmailData{
-		To:       to,
-		Subject:  subject,
-		Body:     bodyBuf.String(),
-		UserId:   userId,
-		Name:     name,
-		OTP:      otp,
-		Metadata: metadata,
-		Data:     data,
+		To:      to,
+		Subject: subject,
+		Body:    bodyBuf.String(),
+		Data:    data,
 	}
 
 	if err := s.QueueEmail(emailData); err != nil {
@@ -280,14 +228,6 @@ func (s *EmailService) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 	fmt.Fprintf(w, `{"status":"success","message":"Email queued for delivery"}`)
 }
-func generateOTP() string {
-	const digits = "0123456789"
-	b := make([]byte, 6)
-	for i := range b {
-		b[i] = digits[rand.Intn(len(digits))]
-	}
-	return string(b)
-}
 
 func main() {
 	fmt.Println("Initialising the email service")
@@ -296,7 +236,7 @@ func main() {
 	service := NewEmailService(templatesDir)
 	defer service.Stop()
 
-	http.HandleFunc("/send", service.handleSendEmail)
+	http.HandleFunc("GET /send", service.handleSendEmail)
 
 	port := os.Getenv("EMAIL_SERVICE_PORT")
 	if port == "" {
