@@ -2,8 +2,6 @@ services:
   email-service:
     build: .
     container_name: email-service
-    ports:
-      - "7979:7979" 
     restart: unless-stopped
     volumes:
       - ./templates:/app/templates  # Maps local templates folder to container

@@ -337,7 +337,7 @@ func main() {
 
 	port := os.Getenv("EMAIL_SERVICE_PORT")
 	if port == "" {
-		port = "8080"
+		port = "7979"
 	}
 	fmt.Printf("Starting server on port %s\n", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
