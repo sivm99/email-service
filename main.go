@@ -48,10 +48,9 @@ type EmailService struct {
 	cancel       context.CancelFunc
 }
 
-// New type to represent placeholder values
 type PlaceholderValue struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key   string      `json:"key"`
+	Value interface{} `json:"value"` // Using interface{} to accept any type
 }
 
 // Request structure for POST /send
@@ -253,15 +252,10 @@ func (s *EmailService) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *EmailService) handlePostSendEmail(w http.ResponseWriter, r *http.Request) {
-	// Only accept POST requests
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Parse the request body
 	var req SendEmailRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		fmt.Printf("%v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -272,7 +266,6 @@ func (s *EmailService) handlePostSendEmail(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Missing 'to' field", http.StatusBadRequest)
 		return
 	}
-
 	if req.Template == "" {
 		http.Error(w, "Missing 'template' field", http.StatusBadRequest)
 		return
@@ -324,6 +317,7 @@ func (s *EmailService) handlePostSendEmail(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusAccepted)
 	fmt.Fprintf(w, `{"status":"success","message":"Email queued for delivery"}`)
 }
+
 func main() {
 	fmt.Println("Initialising the email service")
 	envcheck.Init()
