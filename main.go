@@ -23,10 +23,14 @@ type EmailTemplate struct {
 }
 
 type EmailData struct {
-	To      string
-	Subject string
-	Body    string
-	Data    map[string]interface{}
+	To           string
+	Subject      string
+	Body         string
+	Data         map[string]interface{}
+	SMTPServer   string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
 }
 
 type EmailService struct {
@@ -42,6 +46,25 @@ type EmailService struct {
 	wg           sync.WaitGroup
 	ctx          context.Context
 	cancel       context.CancelFunc
+}
+
+// New type to represent placeholder values
+type PlaceholderValue struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// Request structure for POST /send
+type SendEmailRequest struct {
+	To              string             `json:"to"`
+	Subject         string             `json:"subject"`
+	Template        string             `json:"template"`
+	PlaceholderData []PlaceholderValue `json:"placeholders"`
+	// SMTP credentials
+	SMTPServer   string `json:"smtp_server,omitempty"`
+	SMTPPort     int    `json:"smtp_port,omitempty"`
+	SMTPUsername string `json:"smtp_username,omitempty"`
+	SMTPPassword string `json:"smtp_password,omitempty"`
 }
 
 func NewEmailService(templatesDir string) *EmailService {
@@ -229,6 +252,78 @@ func (s *EmailService) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"success","message":"Email queued for delivery"}`)
 }
 
+func (s *EmailService) handlePostSendEmail(w http.ResponseWriter, r *http.Request) {
+	// Only accept POST requests
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse the request body
+	var req SendEmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// Validate required fields
+	if req.To == "" {
+		http.Error(w, "Missing 'to' field", http.StatusBadRequest)
+		return
+	}
+
+	if req.Template == "" {
+		http.Error(w, "Missing 'template' field", http.StatusBadRequest)
+		return
+	}
+
+	// Set default subject if not provided
+	if req.Subject == "" {
+		req.Subject = "Email Notification"
+	}
+
+	// Parse the template
+	tmpl, err := template.New("dynamic").Parse(req.Template)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid template: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Convert placeholder values to a map for template execution
+	data := make(map[string]interface{})
+	for _, p := range req.PlaceholderData {
+		data[p.Key] = p.Value
+	}
+
+	// Execute template to get the email body
+	var bodyBuf bytes.Buffer
+	if err := tmpl.Execute(&bodyBuf, data); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to render template: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Queue the email for sending
+	emailData := EmailData{
+		To:           req.To,
+		Subject:      req.Subject,
+		Body:         bodyBuf.String(),
+		Data:         data,
+		SMTPServer:   req.SMTPServer,
+		SMTPPort:     req.SMTPPort,
+		SMTPUsername: req.SMTPUsername,
+		SMTPPassword: req.SMTPPassword,
+	}
+
+	if err := s.QueueEmail(emailData); err != nil {
+		http.Error(w, "Failed to queue email", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	fmt.Fprintf(w, `{"status":"success","message":"Email queued for delivery"}`)
+}
 func main() {
 	fmt.Println("Initialising the email service")
 	envcheck.Init()
@@ -236,13 +331,14 @@ func main() {
 	service := NewEmailService(templatesDir)
 	defer service.Stop()
 
+	// Register both endpoints
 	http.HandleFunc("GET /send", service.handleSendEmail)
+	http.HandleFunc("POST /send", service.handlePostSendEmail)
 
 	port := os.Getenv("EMAIL_SERVICE_PORT")
 	if port == "" {
 		port = "8080"
 	}
-
 	fmt.Printf("Starting server on port %s\n", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
